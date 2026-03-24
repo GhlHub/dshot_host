@@ -1,0 +1,13 @@
+# Simulation outputs
+*.vcd
+*.out
+
+# Vivado transient data
+.Xil/
+*.jou
+*.log
+*.str
+
+# OS metadata
+.DS_Store
+._*
