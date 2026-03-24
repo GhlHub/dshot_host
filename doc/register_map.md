@@ -35,7 +35,10 @@ The design runs in a single `60 MHz` clock domain. Timing and age-related fields
 | `[0]` | `bidir_en` | `0`: normal DSHOT, `1`: bidirectional DSHOT |
 | `[1]` | reserved | write `0` |
 | `[4:2]` | `speed` | DSHOT speed select |
-| `[31:5]` | reserved | write `0` |
+| `[7:5]` | reserved | write `0` |
+| `[8]` | `rx_fifo_reset` | self-clearing RX FIFO flush/reset pulse |
+| `[9]` | `tx_fifo_reset` | self-clearing TX FIFO flush/reset pulse |
+| `[31:10]` | reserved | write `0` |
 
 `speed` encoding:
 
@@ -47,6 +50,24 @@ The design runs in a single `60 MHz` clock domain. Timing and age-related fields
 | `3` | `DSHOT1200` |
 
 Writing `CONTROL` reloads the built-in timing presets for the selected speed.
+
+`bidir_en` and `speed` are normal mode bits. `rx_fifo_reset` and `tx_fifo_reset` are write pulses in the same register and are not latched.
+
+`rx_fifo_reset`:
+
+- flushes the RX FIFO
+- clears RX FIFO overflow state
+- clears the latched popped RX tag
+- clears RX FIFO age tracking
+- clears RX-related pending IRQ bits `[2:0]`
+
+`tx_fifo_reset`:
+
+- flushes the queued TX FIFO entries
+- clears TX FIFO overflow state
+- does not cancel an already-active transmit
+- clears the TX-empty pending IRQ bit `[4]`
+- does not change `bidir_en` or `speed` beyond whatever values were written in the same `CONTROL` word
 
 ## `0x04` `STATUS`
 
@@ -69,6 +90,8 @@ Writing `CONTROL` reloads the built-in timing presets for the selected speed.
 
 Bits `[4:1]` clear on write-one.
 
+FIFO overflow bits in `STATUS` are cleared by the corresponding FIFO reset pulse or global reset, not by writing `STATUS`.
+
 ## `0x08` `TX12`
 
 Writing this register pushes one request into the TX FIFO.
@@ -82,6 +105,8 @@ Writing this register pushes one request into the TX FIFO.
 | `[31:24]` | reserved | write `0` |
 
 CRC is generated in hardware when the request is launched from the TX FIFO.
+
+If the TX FIFO is full when this register is written, the incoming request is dropped and the TX FIFO overflow flag is set.
 
 ## `0x0C` `TX16`
 
@@ -103,6 +128,8 @@ Repeat encoding for both `TX12` and `TX16`:
 | `...` | ... |
 | `0xF` | 16 |
 
+If the TX FIFO is full when this register is written, the incoming request is dropped and the TX FIFO overflow flag is set.
+
 ## Timing Registers
 
 `0x10` `T0H`, `0x14` `T1H`, `0x18` `BIT`, `0x1C` `TURNAROUND`, `0x20` `RX_SAMPLE`, and `0x24` `RX_TIMEOUT` all use bits `[15:0]` as clock counts in the `60 MHz` domain.
@@ -119,6 +146,8 @@ Reading this register pops one RX FIFO entry and returns:
 
 The corresponding 4-bit request tag is latched into `RX_FIFO_TAG`.
 
+If the RX FIFO is empty, the read returns `0`.
+
 ## `0x2C` `RX_FIFO_STATUS`
 
 | Bits | Name | Description |
@@ -129,6 +158,8 @@ The corresponding 4-bit request tag is latched into `RX_FIFO_TAG`.
 | `[22]` | `rx_fifo_full` | RX FIFO full |
 | `[23]` | `rx_fifo_overflow` | RX FIFO overflow |
 | `[31:24]` | reserved | read as `0` |
+
+RX FIFO overflow indicates a received response was dropped because the RX FIFO was full.
 
 ## `0x30` `IRQ_MASK`
 
@@ -162,6 +193,12 @@ Interrupt bit encoding:
 
 Writing `1` to bits `[4:0]` clears the corresponding pending bits. For TX-complete and TX-empty, the associated sticky source bit is also cleared.
 
+Interrupt summary:
+
+- bits `[2:0]` are RX-side causes
+- bit `[3]` is a sticky request-complete event
+- bit `[4]` is a sticky TX-queue-drained event
+
 ## `0x38` `IRQ_OCC`
 
 | Bits | Name | Description |
@@ -189,6 +226,8 @@ Writing `1` to bits `[4:0]` clears the corresponding pending bits. For TX-comple
 | `[11:8]` | `active_tx_tag` | tag of the request currently being executed |
 | `[31:12]` | reserved | read as `0` |
 
+`rx_tag` updates when `RX_FIFO_DATA` is popped. `last_tx_done_tag` updates when a queued request completes.
+
 ## Reset Defaults
 
 | Register | Reset Value | Notes |
@@ -203,6 +242,8 @@ Writing `1` to bits `[4:0]` clears the corresponding pending bits. For TX-comple
 | `IRQ_MASK` | `0` | all interrupts masked |
 | `IRQ_OCC` | `0` | occupancy threshold disabled |
 | `IRQ_AGE` | `0` | age threshold disabled |
+
+At reset both FIFOs are empty, both overflow flags are clear, and no request tag is active.
 
 ## Built-In Speed Presets
 

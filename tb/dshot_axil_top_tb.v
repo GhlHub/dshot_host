@@ -14,6 +14,8 @@ localparam [7:0] ADDR_IRQ_AGE      = 8'h3C;
 localparam [7:0] ADDR_RX_FIFO_TAG  = 8'h40;
 
 localparam [2:0] DSHOT_SPEED_600 = 3'd2;
+localparam integer CONTROL_RX_FIFO_RST_BIT = 8;
+localparam integer CONTROL_TX_FIFO_RST_BIT = 9;
 localparam [3:0] TAG_BIDIR_RX    = 4'hA;
 localparam [3:0] TAG_TX_DONE     = 4'h3;
 localparam [3:0] TAG_TX_QUEUE0   = 4'h4;
@@ -61,6 +63,7 @@ reg [15:0] expected_reply_period;
 reg [11:0] expected_reply_value12;
 reg [15:0] expected_reply_payload;
 reg [15:0] expected_bidir_frame;
+reg        waveform_check_done;
 
 dshot_axil_top dut(
     .s_axi_aclk   (clk),
@@ -245,6 +248,109 @@ task wait_core_idle;
     end
 endtask
 
+task check_tx_frame_waveform;
+    input [15:0] expected_frame;
+    input integer repeat_count;
+    input integer expected_bidir;
+    integer repeat_idx;
+    integer bit_idx;
+    integer watchdog;
+    integer active_cycles;
+    integer inactive_cycles;
+    integer expected_active_cycles;
+    integer expected_inactive_cycles;
+    reg active_level;
+    reg inactive_level;
+    begin
+        active_level   = expected_bidir ? 1'b0 : 1'b1;
+        inactive_level = ~active_level;
+
+        for (repeat_idx = 0; repeat_idx < repeat_count; repeat_idx = repeat_idx + 1) begin
+            watchdog = 0;
+            while (!pin_oe && (watchdog < 200000)) begin
+                @(posedge clk);
+                watchdog = watchdog + 1;
+            end
+            if (!pin_oe) begin
+                $display("ERROR: timed out waiting for TX waveform start, repeat %0d", repeat_idx);
+                $fatal;
+            end
+
+            for (bit_idx = 15; bit_idx >= 0; bit_idx = bit_idx - 1) begin
+                if (pin_o !== active_level) begin
+                    $display("ERROR: TX waveform polarity mismatch at repeat %0d bit %0d. exp active=%0d got=%0d",
+                             repeat_idx, bit_idx, active_level, pin_o);
+                    $fatal;
+                end
+
+                active_cycles = 0;
+                while (pin_oe && (pin_o === active_level)) begin
+                    active_cycles = active_cycles + 1;
+                    @(posedge clk);
+                end
+
+                inactive_cycles = 0;
+                while (pin_oe && (pin_o === inactive_level)) begin
+                    inactive_cycles = inactive_cycles + 1;
+                    @(posedge clk);
+                end
+
+                expected_active_cycles = expected_frame[bit_idx] ?
+                                         dut.u_dshot_axil_regs.t1h_clks_reg :
+                                         dut.u_dshot_axil_regs.t0h_clks_reg;
+                expected_inactive_cycles = dut.u_dshot_axil_regs.bit_clks_reg - expected_active_cycles;
+
+                if (active_cycles !== expected_active_cycles) begin
+                    $display("ERROR: active pulse width mismatch at repeat %0d bit %0d. exp=%0d got=%0d",
+                             repeat_idx, bit_idx, expected_active_cycles, active_cycles);
+                    $fatal;
+                end
+                if (inactive_cycles !== expected_inactive_cycles) begin
+                    $display("ERROR: inactive pulse width mismatch at repeat %0d bit %0d. exp=%0d got=%0d",
+                             repeat_idx, bit_idx, expected_inactive_cycles, inactive_cycles);
+                    $fatal;
+                end
+                if ((active_cycles + inactive_cycles) !== dut.u_dshot_axil_regs.bit_clks_reg) begin
+                    $display("ERROR: bit period mismatch at repeat %0d bit %0d. exp=%0d got=%0d",
+                             repeat_idx, bit_idx, dut.u_dshot_axil_regs.bit_clks_reg,
+                             active_cycles + inactive_cycles);
+                    $fatal;
+                end
+            end
+        end
+    end
+endtask
+
+task start_tx_waveform_check;
+    input [15:0] expected_frame;
+    input integer repeat_count;
+    input integer expected_bidir;
+    begin
+        waveform_check_done = 1'b0;
+        fork
+            begin
+                check_tx_frame_waveform(expected_frame, repeat_count, expected_bidir);
+                waveform_check_done = 1'b1;
+            end
+        join_none
+    end
+endtask
+
+task wait_tx_waveform_check_done;
+    integer watchdog;
+    begin
+        watchdog = 0;
+        while (!waveform_check_done && (watchdog < 200000)) begin
+            @(posedge clk);
+            watchdog = watchdog + 1;
+        end
+        if (!waveform_check_done) begin
+            $display("ERROR: timed out waiting for waveform checker completion");
+            $fatal;
+        end
+    end
+endtask
+
 initial begin
     clk = 1'b0;
     forever #8.333 clk = ~clk;
@@ -274,6 +380,7 @@ initial begin
     expected_reply_payload = {expected_reply_value12, dshot_crc12(expected_reply_value12)};
     expected_reply_period  = 16'd10;
     expected_bidir_frame   = {tx12_value, dshot_crc12_inv(tx12_value)};
+    waveform_check_done    = 1'b1;
 
     $dumpfile("dshot_axil_top_tb.vcd");
     $dumpvars(0, dshot_axil_top_tb);
@@ -285,9 +392,11 @@ initial begin
     axil_write(ADDR_CONTROL, {27'h0, DSHOT_SPEED_600, 1'b0, 1'b0});
 
     expected_frame_count = 1;
+    start_tx_waveform_check({tx12_value, dshot_crc12(tx12_value)}, 1, 0);
     axil_write(ADDR_TX12, {8'h00, 4'h0, 4'h0, 4'h0, tx12_value});
     wait_for_frame_count(expected_frame_count);
     wait_core_idle;
+    wait_tx_waveform_check_done;
     if (esc_frame_word !== {tx12_value, dshot_crc12(tx12_value)}) begin
         $display("ERROR: TX12 normal frame mismatch. exp=%h got=%h", {tx12_value, dshot_crc12(tx12_value)}, esc_frame_word);
         $fatal;
@@ -298,9 +407,11 @@ initial begin
     end
 
     expected_frame_count = expected_frame_count + 3;
+    start_tx_waveform_check(tx16_frame, 3, 0);
     axil_write(ADDR_TX16, {8'h00, 4'h0, 4'h2, tx16_frame});
     wait_for_frame_count(expected_frame_count);
     wait_core_idle;
+    wait_tx_waveform_check_done;
     if (esc_frame_word !== tx16_frame) begin
         $display("ERROR: TX16 frame mismatch. exp=%h got=%h", tx16_frame, esc_frame_word);
         $fatal;
@@ -313,9 +424,11 @@ initial begin
     axil_write(ADDR_CONTROL, {27'h0, DSHOT_SPEED_600, 1'b0, 1'b1});
 
     expected_frame_count = expected_frame_count + 1;
+    start_tx_waveform_check(expected_bidir_frame, 1, 1);
     axil_write(ADDR_TX12, {8'h00, TAG_BIDIR_RX, 4'h0, 4'h0, tx12_value});
     wait_for_frame_count(expected_frame_count);
     wait_core_idle;
+    wait_tx_waveform_check_done;
 
     if (esc_frame_word !== expected_bidir_frame) begin
         $display("ERROR: bidirectional TX12 frame mismatch. exp=%h got=%h", expected_bidir_frame, esc_frame_word);
@@ -508,7 +621,54 @@ initial begin
         $fatal;
     end
 
-    $display("PASS: queued TX, tagged RX FIFO, and RX/TX IRQ paths");
+    axil_write(ADDR_IRQ_MASK, 32'h0000_0000);
+    esc_reply_enable = 1'b1;
+    axil_write(ADDR_CONTROL, {27'h0, DSHOT_SPEED_600, 1'b0, 1'b1});
+    expected_frame_count = expected_frame_count + 1;
+    axil_write(ADDR_TX12, {8'h00, 4'h7, 4'h0, 4'h0, tx12_value});
+    wait_for_frame_count(expected_frame_count);
+    wait_core_idle;
+    axil_read(ADDR_STATUS, read_data_reg);
+    if (read_data_reg[10] !== 1'b0) begin
+        $display("ERROR: expected RX FIFO non-empty before RX reset");
+        $fatal;
+    end
+
+    axil_write(ADDR_CONTROL, ((32'h1 << CONTROL_RX_FIFO_RST_BIT) | (DSHOT_SPEED_600 << 2) | 32'h1));
+    repeat (3) @(posedge clk);
+    axil_read(ADDR_STATUS, read_data_reg);
+    if (read_data_reg[10] !== 1'b1 || read_data_reg[9:5] !== 5'd0) begin
+        $display("ERROR: RX FIFO reset did not empty FIFO. status=%h", read_data_reg);
+        $fatal;
+    end
+    axil_read(ADDR_RX_FIFO_TAG, read_data_reg);
+    if (read_data_reg[3:0] !== 4'h0) begin
+        $display("ERROR: RX FIFO tag latch not cleared by RX reset. got=%h", read_data_reg[3:0]);
+        $fatal;
+    end
+
+    esc_reply_enable = 1'b0;
+    axil_write(ADDR_CONTROL, {27'h0, DSHOT_SPEED_600, 1'b0, 1'b0});
+    axil_write(ADDR_IRQ_STATUS, 32'h0000_001F);
+    axil_write(ADDR_TX16, {8'h00, 4'h8, 4'h0, 16'h3333});
+    axil_write(ADDR_TX16, {8'h00, 4'h9, 4'h0, 16'h4444});
+    axil_write(ADDR_CONTROL, ((32'h1 << CONTROL_TX_FIFO_RST_BIT) | (DSHOT_SPEED_600 << 2)));
+    expected_frame_count = expected_frame_count + 1;
+    wait_for_frame_count(expected_frame_count);
+    wait_core_idle;
+    ensure_no_irq_cycles(64);
+    if (esc_frame_count !== expected_frame_count) begin
+        $display("ERROR: TX FIFO reset allowed extra frame. exp=%0d got=%0d",
+                 expected_frame_count, esc_frame_count);
+        $fatal;
+    end
+    axil_read(ADDR_STATUS, read_data_reg);
+    if (read_data_reg[18] !== 1'b1 || read_data_reg[17:13] !== 5'd0) begin
+        $display("ERROR: TX FIFO reset did not empty FIFO. status=%h", read_data_reg);
+        $fatal;
+    end
+
+    $display("PASS: queued TX, tagged RX FIFO, IRQ paths, and FIFO reset controls");
     $finish;
 end
 

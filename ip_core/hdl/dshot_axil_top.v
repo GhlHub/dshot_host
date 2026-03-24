@@ -29,6 +29,7 @@ module dshot_axil_top(
 wire        start;
 wire        tx_use_raw;
 wire [3:0]  tx_repeat_m1;
+wire [3:0]  tx_tag;
 wire        bidir_en;
 wire [11:0] tx_value12;
 wire [15:0] tx_frame_raw;
@@ -49,7 +50,7 @@ wire [3:0]  edt_type;
 wire [7:0]  edt_data;
 wire [15:0] erpm_period;
 wire        rx_fifo_wr_en;
-wire [31:0] rx_fifo_wdata;
+wire [35:0] rx_fifo_wdata;
 
 dshot_axil_regs u_dshot_axil_regs(
     .s_axi_aclk          (s_axi_aclk),
@@ -74,6 +75,7 @@ dshot_axil_regs u_dshot_axil_regs(
     .start               (start),
     .tx_use_raw          (tx_use_raw),
     .tx_repeat_m1        (tx_repeat_m1),
+    .tx_tag              (tx_tag),
     .bidir_en            (bidir_en),
     .tx_value12          (tx_value12),
     .tx_frame_raw        (tx_frame_raw),
@@ -104,6 +106,7 @@ dshot_core u_dshot_core(
     .start               (start),
     .tx_use_raw          (tx_use_raw),
     .tx_repeat_m1        (tx_repeat_m1),
+    .tx_tag              (tx_tag),
     .bidir_en            (bidir_en),
     .tx_value12          (tx_value12),
     .tx_frame_raw        (tx_frame_raw),

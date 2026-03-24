@@ -32,6 +32,8 @@
 #define DSHOT_CONTROL_BIDIR_EN_MASK   (1u << 0)
 #define DSHOT_CONTROL_SPEED_SHIFT     2u
 #define DSHOT_CONTROL_SPEED_MASK      (0x7u << DSHOT_CONTROL_SPEED_SHIFT)
+#define DSHOT_CONTROL_RX_FIFO_RST_MASK (1u << 8)
+#define DSHOT_CONTROL_TX_FIFO_RST_MASK (1u << 9)
 
 #define DSHOT_SPEED_150   0u
 #define DSHOT_SPEED_300   1u
@@ -124,6 +126,14 @@ static inline uint32_t dshot_control_value(uint32_t speed, uint32_t bidir_en)
 {
     return ((speed << DSHOT_CONTROL_SPEED_SHIFT) & DSHOT_CONTROL_SPEED_MASK) |
            (bidir_en ? DSHOT_CONTROL_BIDIR_EN_MASK : 0u);
+}
+
+static inline uint32_t dshot_control_with_fifo_reset(uint32_t speed, uint32_t bidir_en,
+                                                     uint32_t rx_fifo_reset, uint32_t tx_fifo_reset)
+{
+    return dshot_control_value(speed, bidir_en) |
+           (rx_fifo_reset ? DSHOT_CONTROL_RX_FIFO_RST_MASK : 0u) |
+           (tx_fifo_reset ? DSHOT_CONTROL_TX_FIFO_RST_MASK : 0u);
 }
 
 static inline uint32_t dshot_tx12_value(uint32_t value12, uint32_t repeat_m1, uint32_t tag)

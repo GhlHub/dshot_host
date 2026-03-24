@@ -69,6 +69,8 @@ localparam [7:0] ADDR_RX_FIFO_TAG    = 8'h40;
 localparam integer CONTROL_BIDIR_EN_BIT = 0;
 localparam integer CONTROL_SPEED_LSB    = 2;
 localparam integer CONTROL_SPEED_MSB    = 4;
+localparam integer CONTROL_RX_FIFO_RST_BIT = 8;
+localparam integer CONTROL_TX_FIFO_RST_BIT = 9;
 
 localparam [2:0] DSHOT_SPEED_150  = 3'd0;
 localparam [2:0] DSHOT_SPEED_300  = 3'd1;
@@ -145,6 +147,7 @@ wire [31:0] irq_occ_wdata;
 wire [31:0] irq_age_wdata;
 wire [31:0] status_wdata;
 wire [4:0]  irq_clear_mask;
+wire [4:0]  irq_reset_clear_mask;
 wire [4:0]  rx_fifo_occupancy;
 wire [35:0] rx_fifo_rd_data;
 wire        rx_fifo_empty;
@@ -165,6 +168,8 @@ wire        tx_fifo_push;
 wire        tx_cmd_launch;
 wire        tx_queue_idle;
 wire        tx_empty_event;
+wire        rx_fifo_reset_req;
+wire        tx_fifo_reset_req;
 wire [4:0]  irq_raw_status;
 wire [31:0] control_readback;
 wire [31:0] rx_fifo_tag_readback;
@@ -225,6 +230,9 @@ assign irq_occ_wdata    = apply_wstrb32({24'h0, irq_occ_threshold_reg}, wdata_re
 assign irq_age_wdata    = apply_wstrb32({16'h0, irq_age_threshold_reg}, wdata_reg, wstrb_reg);
 assign status_wdata     = apply_wstrb32(32'h0, wdata_reg, wstrb_reg);
 assign irq_clear_mask   = (write_fire && (awaddr_reg == ADDR_IRQ_STATUS) && wstrb_reg[0]) ? wdata_reg[4:0] : 5'b00000;
+assign rx_fifo_reset_req = write_fire && (awaddr_reg == ADDR_CONTROL) && control_wdata[CONTROL_RX_FIFO_RST_BIT];
+assign tx_fifo_reset_req = write_fire && (awaddr_reg == ADDR_CONTROL) && control_wdata[CONTROL_TX_FIFO_RST_BIT];
+assign irq_reset_clear_mask = {tx_fifo_reset_req, 1'b0, rx_fifo_reset_req, rx_fifo_reset_req, rx_fifo_reset_req};
 
 assign rx_fifo_pop         = read_fire && (araddr_reg == ADDR_RX_FIFO_DATA) && !rx_fifo_empty;
 assign rx_fifo_do_read     = rx_fifo_pop;
@@ -238,9 +246,9 @@ assign tx_fifo_push = write_fire && ((awaddr_reg == ADDR_TX12) || (awaddr_reg ==
 assign tx_fifo_wr_data = (awaddr_reg == ADDR_TX16) ?
                          {1'b1, tx16_wdata[23:20], tx16_wdata[19:16], tx16_wdata[15:0]} :
                          {1'b0, tx12_wdata[23:20], tx12_wdata[19:16], 4'h0, tx12_wdata[11:0]};
-assign tx_cmd_launch = !busy && !start_reg && !tx_fifo_empty;
+assign tx_cmd_launch = !busy && !start_reg && !tx_fifo_empty && !tx_fifo_reset_req;
 assign tx_queue_idle = tx_fifo_empty && !busy && !start_reg;
-assign tx_empty_event = !prev_tx_queue_idle_reg && tx_queue_idle;
+assign tx_empty_event = !prev_tx_queue_idle_reg && tx_queue_idle && !tx_fifo_reset_req;
 
 assign irq_raw_status[0] = !rx_fifo_empty;
 assign irq_raw_status[1] = (irq_occ_threshold_reg != 8'h00) && (rx_fifo_occupancy >= irq_occ_threshold_reg[4:0]);
@@ -255,7 +263,7 @@ dshot_rx_fifo #(
     .ADDR_W(4)
 ) u_dshot_rx_fifo (
     .clk      (s_axi_aclk),
-    .rst      (~s_axi_aresetn),
+    .rst      (~s_axi_aresetn || rx_fifo_reset_req),
     .wr_en    (rx_fifo_wr_en),
     .wr_data  (rx_fifo_wdata),
     .rd_en    (rx_fifo_pop),
@@ -272,7 +280,7 @@ dshot_tx_fifo #(
     .ADDR_W(4)
 ) u_dshot_tx_fifo (
     .clk      (s_axi_aclk),
-    .rst      (~s_axi_aresetn),
+    .rst      (~s_axi_aresetn || tx_fifo_reset_req),
     .wr_en    (tx_fifo_push),
     .wr_data  (tx_fifo_wr_data),
     .rd_en    (tx_cmd_launch),
@@ -555,6 +563,17 @@ always @(posedge s_axi_aclk) begin
             rx_fifo_tag_latched_reg <= rx_fifo_rd_data[35:32];
         end
 
+        if (rx_fifo_reset_req) begin
+            fifo_age_reg            <= 16'd0;
+            rx_fifo_tag_latched_reg <= 4'h0;
+            last_erpm_period_reg    <= 16'h0000;
+            last_rx_word_reg        <= 32'h0000_0000;
+        end
+
+        if (tx_fifo_reset_req) begin
+            tx_empty_irq_status_reg <= 1'b0;
+        end
+
         if (irq_clear_mask[3]) begin
             tx_complete_irq_status_reg <= 1'b0;
         end
@@ -565,18 +584,21 @@ always @(posedge s_axi_aclk) begin
             tx_empty_irq_status_reg <= 1'b1;
         end
 
-        irq_pending_reg <= (irq_pending_reg | (irq_raw_status & irq_mask_reg)) & ~irq_clear_mask;
+        irq_pending_reg <= (irq_pending_reg | (irq_raw_status & irq_mask_reg)) &
+                           ~irq_clear_mask & ~irq_reset_clear_mask;
         prev_tx_queue_idle_reg <= tx_queue_idle;
 
-        case ({(rx_fifo_occupancy != 5'd0), rx_fifo_nonempty_next})
-            2'b01: fifo_age_reg <= 16'd0;
-            2'b11: begin
-                if (fifo_age_reg != 16'hFFFF) begin
-                    fifo_age_reg <= fifo_age_reg + 16'd1;
+        if (!rx_fifo_reset_req) begin
+            case ({(rx_fifo_occupancy != 5'd0), rx_fifo_nonempty_next})
+                2'b01: fifo_age_reg <= 16'd0;
+                2'b11: begin
+                    if (fifo_age_reg != 16'hFFFF) begin
+                        fifo_age_reg <= fifo_age_reg + 16'd1;
+                    end
                 end
-            end
-            default: fifo_age_reg <= 16'd0;
-        endcase
+                default: fifo_age_reg <= 16'd0;
+            endcase
+        end
     end
 end
 

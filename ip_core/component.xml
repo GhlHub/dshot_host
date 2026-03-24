@@ -254,7 +254,7 @@
         <spirit:parameters>
           <spirit:parameter>
             <spirit:name>viewChecksum</spirit:name>
-            <spirit:value>12d51d27</spirit:value>
+            <spirit:value>56fe1690</spirit:value>
           </spirit:parameter>
         </spirit:parameters>
       </spirit:view>
@@ -270,7 +270,7 @@
         <spirit:parameters>
           <spirit:parameter>
             <spirit:name>viewChecksum</spirit:name>
-            <spirit:value>12d51d27</spirit:value>
+            <spirit:value>56fe1690</spirit:value>
           </spirit:parameter>
         </spirit:parameters>
       </spirit:view>
@@ -288,6 +288,15 @@
           </spirit:parameter>
         </spirit:parameters>
       </spirit:view>
+      <spirit:view>
+        <spirit:name>xilinx_productguide</spirit:name>
+        <spirit:displayName>Product Guide</spirit:displayName>
+        <spirit:envIdentifier>:vivado.xilinx.com:docs.productguide</spirit:envIdentifier>
+        <spirit:fileSetRef>
+          <spirit:localName>xilinx_productguide_view_fileset</spirit:localName>
+        </spirit:fileSetRef>
+      </spirit:view>
+
     </spirit:views>
     <spirit:ports>
       <spirit:port>
@@ -700,9 +709,13 @@
         <spirit:fileType>verilogSource</spirit:fileType>
       </spirit:file>
       <spirit:file>
+        <spirit:name>hdl/dshot_tx_fifo.v</spirit:name>
+        <spirit:fileType>verilogSource</spirit:fileType>
+      </spirit:file>
+      <spirit:file>
         <spirit:name>hdl/dshot_axil_top.v</spirit:name>
         <spirit:fileType>verilogSource</spirit:fileType>
-        <spirit:userFileType>CHECKSUM_aafc0a38</spirit:userFileType>
+        <spirit:userFileType>CHECKSUM_a46f0757</spirit:userFileType>
       </spirit:file>
     </spirit:fileSet>
     <spirit:fileSet>
@@ -744,6 +757,10 @@
         <spirit:fileType>verilogSource</spirit:fileType>
       </spirit:file>
       <spirit:file>
+        <spirit:name>hdl/dshot_tx_fifo.v</spirit:name>
+        <spirit:fileType>verilogSource</spirit:fileType>
+      </spirit:file>
+      <spirit:file>
         <spirit:name>hdl/dshot_axil_top.v</spirit:name>
         <spirit:fileType>verilogSource</spirit:fileType>
       </spirit:file>
@@ -757,6 +774,14 @@
         <spirit:userFileType>XGUI_VERSION_2</spirit:userFileType>
       </spirit:file>
     </spirit:fileSet>
+    <spirit:fileSet>
+      <spirit:name>xilinx_productguide_view_fileset</spirit:name>
+      <spirit:file>
+        <spirit:name>https://github.com/GhlHub/dshot_host</spirit:name>
+        <spirit:userFileType>text</spirit:userFileType>
+      </spirit:file>
+    </spirit:fileSet>
+
   </spirit:fileSets>
   <spirit:description>AXI-Lite controlled DSHOT controller with bidirectional eRPM receive, RX FIFO, and interrupt support.</spirit:description>
   <spirit:parameters>
@@ -779,15 +804,16 @@
       </xilinx:taxonomies>
       <xilinx:displayName>DSHOT AXI-Lite Controller</xilinx:displayName>
       <xilinx:definitionSource>package_project</xilinx:definitionSource>
-      <xilinx:vendorURL>https://example.invalid</xilinx:vendorURL>
+      <xilinx:advertisementURL>https://github.com/GhlHub/dshot_host</xilinx:advertisementURL>
+      <xilinx:vendorURL>https://github.com/GhlHub/dshot_host</xilinx:vendorURL>
       <xilinx:coreRevision>1</xilinx:coreRevision>
-      <xilinx:coreCreationDateTime>2026-03-24T03:09:01Z</xilinx:coreCreationDateTime>
+      <xilinx:coreCreationDateTime>2026-03-24T11:39:02Z</xilinx:coreCreationDateTime>
     </xilinx:coreExtensions>
     <xilinx:packagingInfo>
       <xilinx:xilinxVersion>2025.2</xilinx:xilinxVersion>
       <xilinx:checksum xilinx:scope="busInterfaces" xilinx:value="3d7d072d"/>
       <xilinx:checksum xilinx:scope="memoryMaps" xilinx:value="c930e363"/>
-      <xilinx:checksum xilinx:scope="fileGroups" xilinx:value="d992e91a"/>
+      <xilinx:checksum xilinx:scope="fileGroups" xilinx:value="718f6044"/>
       <xilinx:checksum xilinx:scope="ports" xilinx:value="ad38348b"/>
       <xilinx:checksum xilinx:scope="parameters" xilinx:value="061f049c"/>
     </xilinx:packagingInfo>
