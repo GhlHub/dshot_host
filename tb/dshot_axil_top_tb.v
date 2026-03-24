@@ -9,8 +9,15 @@ localparam [7:0] ADDR_TX16         = 8'h0C;
 localparam [7:0] ADDR_RX_FIFO_DATA = 8'h28;
 localparam [7:0] ADDR_IRQ_MASK     = 8'h30;
 localparam [7:0] ADDR_IRQ_STATUS   = 8'h34;
+localparam [7:0] ADDR_IRQ_OCC      = 8'h38;
+localparam [7:0] ADDR_IRQ_AGE      = 8'h3C;
+localparam [7:0] ADDR_RX_FIFO_TAG  = 8'h40;
 
 localparam [2:0] DSHOT_SPEED_600 = 3'd2;
+localparam [3:0] TAG_BIDIR_RX    = 4'hA;
+localparam [3:0] TAG_TX_DONE     = 4'h3;
+localparam [3:0] TAG_TX_QUEUE0   = 4'h4;
+localparam [3:0] TAG_TX_QUEUE1   = 4'h5;
 
 reg         clk;
 reg         rst_n;
@@ -209,6 +216,20 @@ task wait_for_irq_assert;
     end
 endtask
 
+task ensure_no_irq_cycles;
+    input integer cycle_count;
+    integer idx;
+    begin
+        for (idx = 0; idx < cycle_count; idx = idx + 1) begin
+            @(posedge clk);
+            if (irq) begin
+                $display("ERROR: unexpected IRQ assertion during quiet window at cycle %0d", idx);
+                $fatal;
+            end
+        end
+    end
+endtask
+
 task wait_core_idle;
     integer watchdog;
     begin
@@ -264,7 +285,7 @@ initial begin
     axil_write(ADDR_CONTROL, {27'h0, DSHOT_SPEED_600, 1'b0, 1'b0});
 
     expected_frame_count = 1;
-    axil_write(ADDR_TX12, {12'h0, 4'h0, 4'h0, tx12_value});
+    axil_write(ADDR_TX12, {8'h00, 4'h0, 4'h0, 4'h0, tx12_value});
     wait_for_frame_count(expected_frame_count);
     wait_core_idle;
     if (esc_frame_word !== {tx12_value, dshot_crc12(tx12_value)}) begin
@@ -277,7 +298,7 @@ initial begin
     end
 
     expected_frame_count = expected_frame_count + 3;
-    axil_write(ADDR_TX16, {12'h0, 4'h2, tx16_frame});
+    axil_write(ADDR_TX16, {8'h00, 4'h0, 4'h2, tx16_frame});
     wait_for_frame_count(expected_frame_count);
     wait_core_idle;
     if (esc_frame_word !== tx16_frame) begin
@@ -292,7 +313,7 @@ initial begin
     axil_write(ADDR_CONTROL, {27'h0, DSHOT_SPEED_600, 1'b0, 1'b1});
 
     expected_frame_count = expected_frame_count + 1;
-    axil_write(ADDR_TX12, {12'h0, 4'h0, 4'h0, tx12_value});
+    axil_write(ADDR_TX12, {8'h00, TAG_BIDIR_RX, 4'h0, 4'h0, tx12_value});
     wait_for_frame_count(expected_frame_count);
     wait_core_idle;
 
@@ -313,9 +334,15 @@ initial begin
         $fatal;
     end
 
+    axil_read(ADDR_RX_FIFO_TAG, read_data_reg);
+    if (read_data_reg[3:0] !== TAG_BIDIR_RX) begin
+        $display("ERROR: RX FIFO tag mismatch. exp=%h got=%h", TAG_BIDIR_RX, read_data_reg[3:0]);
+        $fatal;
+    end
+
     axil_read(ADDR_IRQ_STATUS, read_data_reg);
-    if (read_data_reg[18:16] !== 3'b001) begin
-        $display("ERROR: expected non-empty IRQ pending bit set, got %h", read_data_reg[18:16]);
+    if (read_data_reg[20:16] !== 5'b00001) begin
+        $display("ERROR: expected non-empty IRQ pending bit set, got %h", read_data_reg[20:16]);
         $fatal;
     end
 
@@ -332,7 +359,156 @@ initial begin
         $fatal;
     end
 
-    $display("PASS: normal DSHOT, inverted DSHOT, AXI-Lite master, RX FIFO, and IRQ path");
+    axil_write(ADDR_IRQ_MASK, 32'h0000_0002);
+    axil_write(ADDR_IRQ_OCC, 32'h0000_0002);
+    axil_write(ADDR_IRQ_AGE, 32'h0000_0000);
+
+    expected_frame_count = expected_frame_count + 1;
+    axil_write(ADDR_TX12, {8'h00, 4'h1, 4'h0, 4'h0, tx12_value});
+    wait_for_frame_count(expected_frame_count);
+    wait_core_idle;
+    ensure_no_irq_cycles(32);
+
+    expected_frame_count = expected_frame_count + 1;
+    axil_write(ADDR_TX12, {8'h00, 4'h2, 4'h0, 4'h0, tx12_value});
+    wait_for_frame_count(expected_frame_count);
+    wait_core_idle;
+    wait_for_irq_assert;
+
+    axil_read(ADDR_IRQ_STATUS, read_data_reg);
+    if (read_data_reg[20:16] !== 5'b00010) begin
+        $display("ERROR: expected occupancy IRQ pending bit set, got %h", read_data_reg[20:16]);
+        $fatal;
+    end
+
+    axil_read(ADDR_RX_FIFO_DATA, read_data_reg);
+    if (read_data_reg !== {expected_reply_payload, expected_reply_period}) begin
+        $display("ERROR: occupancy test FIFO word 0 mismatch. exp=%h got=%h",
+                 {expected_reply_payload, expected_reply_period}, read_data_reg);
+        $fatal;
+    end
+    axil_read(ADDR_RX_FIFO_TAG, read_data_reg);
+    if (read_data_reg[3:0] !== 4'h1) begin
+        $display("ERROR: occupancy test tag 0 mismatch. exp=1 got=%h", read_data_reg[3:0]);
+        $fatal;
+    end
+    axil_read(ADDR_RX_FIFO_DATA, read_data_reg);
+    if (read_data_reg !== {expected_reply_payload, expected_reply_period}) begin
+        $display("ERROR: occupancy test FIFO word 1 mismatch. exp=%h got=%h",
+                 {expected_reply_payload, expected_reply_period}, read_data_reg);
+        $fatal;
+    end
+    axil_read(ADDR_RX_FIFO_TAG, read_data_reg);
+    if (read_data_reg[3:0] !== 4'h2) begin
+        $display("ERROR: occupancy test tag 1 mismatch. exp=2 got=%h", read_data_reg[3:0]);
+        $fatal;
+    end
+
+    axil_write(ADDR_IRQ_STATUS, 32'h0000_0002);
+    repeat (5) @(posedge clk);
+    if (irq !== 1'b0) begin
+        $display("ERROR: occupancy IRQ did not clear");
+        $fatal;
+    end
+
+    axil_write(ADDR_IRQ_MASK, 32'h0000_0004);
+    axil_write(ADDR_IRQ_OCC, 32'h0000_0000);
+    axil_write(ADDR_IRQ_AGE, 32'h0000_0010);
+
+    expected_frame_count = expected_frame_count + 1;
+    axil_write(ADDR_TX12, {8'h00, 4'h6, 4'h0, 4'h0, tx12_value});
+    wait_for_frame_count(expected_frame_count);
+    wait_core_idle;
+    ensure_no_irq_cycles(8);
+    wait_for_irq_assert;
+
+    axil_read(ADDR_IRQ_STATUS, read_data_reg);
+    if (read_data_reg[20:16] !== 5'b00100) begin
+        $display("ERROR: expected age IRQ pending bit set, got %h", read_data_reg[20:16]);
+        $fatal;
+    end
+
+    axil_read(ADDR_RX_FIFO_DATA, read_data_reg);
+    if (read_data_reg !== {expected_reply_payload, expected_reply_period}) begin
+        $display("ERROR: age test FIFO word mismatch. exp=%h got=%h",
+                 {expected_reply_payload, expected_reply_period}, read_data_reg);
+        $fatal;
+    end
+    axil_read(ADDR_RX_FIFO_TAG, read_data_reg);
+    if (read_data_reg[3:0] !== 4'h6) begin
+        $display("ERROR: age test tag mismatch. exp=6 got=%h", read_data_reg[3:0]);
+        $fatal;
+    end
+
+    axil_write(ADDR_IRQ_STATUS, 32'h0000_0004);
+    repeat (5) @(posedge clk);
+    if (irq !== 1'b0) begin
+        $display("ERROR: age IRQ did not clear");
+        $fatal;
+    end
+
+    esc_reply_enable = 1'b0;
+    axil_write(ADDR_CONTROL, {27'h0, DSHOT_SPEED_600, 1'b0, 1'b0});
+    axil_write(ADDR_IRQ_STATUS, 32'h0000_001F);
+
+    axil_write(ADDR_IRQ_MASK, 32'h0000_0008);
+    expected_frame_count = expected_frame_count + 1;
+    axil_write(ADDR_TX16, {8'h00, TAG_TX_DONE, 4'h0, 16'h5AA5});
+    wait_for_irq_assert;
+    wait_for_frame_count(expected_frame_count);
+    wait_core_idle;
+
+    axil_read(ADDR_IRQ_STATUS, read_data_reg);
+    if (read_data_reg[20:16] !== 5'b01000) begin
+        $display("ERROR: expected TX complete IRQ pending bit set, got %h", read_data_reg[20:16]);
+        $fatal;
+    end
+    axil_read(ADDR_RX_FIFO_TAG, read_data_reg);
+    if (read_data_reg[7:4] !== TAG_TX_DONE) begin
+        $display("ERROR: last TX done tag mismatch. exp=%h got=%h", TAG_TX_DONE, read_data_reg[7:4]);
+        $fatal;
+    end
+
+    axil_write(ADDR_IRQ_STATUS, 32'h0000_0008);
+    repeat (5) @(posedge clk);
+    if (irq !== 1'b0) begin
+        $display("ERROR: TX complete IRQ did not clear");
+        $fatal;
+    end
+
+    axil_write(ADDR_IRQ_STATUS, 32'h0000_001F);
+    axil_write(ADDR_IRQ_MASK, 32'h0000_0010);
+    expected_frame_count = expected_frame_count + 2;
+    axil_write(ADDR_TX16, {8'h00, TAG_TX_QUEUE0, 4'h0, 16'h1111});
+    axil_write(ADDR_TX16, {8'h00, TAG_TX_QUEUE1, 4'h0, 16'h2222});
+    ensure_no_irq_cycles(16);
+    wait_for_frame_count(expected_frame_count);
+    wait_core_idle;
+    if (esc_frame_word !== 16'h2222) begin
+        $display("ERROR: queued TX final frame mismatch. exp=2222 got=%h", esc_frame_word);
+        $fatal;
+    end
+    wait_for_irq_assert;
+
+    axil_read(ADDR_IRQ_STATUS, read_data_reg);
+    if (read_data_reg[20:16] !== 5'b10000) begin
+        $display("ERROR: expected TX empty IRQ pending bit set, got %h", read_data_reg[20:16]);
+        $fatal;
+    end
+    axil_read(ADDR_RX_FIFO_TAG, read_data_reg);
+    if (read_data_reg[7:4] !== TAG_TX_QUEUE1) begin
+        $display("ERROR: queued TX last done tag mismatch. exp=%h got=%h", TAG_TX_QUEUE1, read_data_reg[7:4]);
+        $fatal;
+    end
+
+    axil_write(ADDR_IRQ_STATUS, 32'h0000_0010);
+    repeat (5) @(posedge clk);
+    if (irq !== 1'b0) begin
+        $display("ERROR: TX empty IRQ did not clear");
+        $fatal;
+    end
+
+    $display("PASS: queued TX, tagged RX FIFO, and RX/TX IRQ paths");
     $finish;
 end
 

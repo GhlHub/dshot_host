@@ -6,6 +6,7 @@ module dshot_core(
     input  wire        start,
     input  wire        tx_use_raw,
     input  wire [3:0]  tx_repeat_m1,
+    input  wire [3:0]  tx_tag,
     input  wire        bidir_en,
     input  wire [11:0] tx_value12,
     input  wire [15:0] tx_frame_raw,
@@ -29,7 +30,7 @@ module dshot_core(
     output wire [7:0]  edt_data,
     output wire [15:0] erpm_period,
     output wire        rx_fifo_wr_en,
-    output wire [31:0] rx_fifo_wdata
+    output wire [35:0] rx_fifo_wdata
     );
 
 wire [15:0] tx_frame_word_auto;
@@ -58,6 +59,7 @@ wire [2:0]  erpm_exp_int;
 wire [8:0]  erpm_base_int;
 wire [15:0] erpm_period_int;
 reg  [15:0] turnaround_count_reg;
+reg  [3:0]  active_tx_tag_reg;
 
 assign tx_frame_word    = tx_use_raw ? tx_frame_raw : tx_frame_word_auto;
 assign turnaround_done  = seq_turnaround_wait &&
@@ -76,7 +78,7 @@ assign edt_type     = edt_type_int;
 assign edt_data     = edt_data_int;
 assign erpm_period  = erpm_period_int;
 assign rx_fifo_wr_en = rx_payload_valid & rx_crc_ok_int;
-assign rx_fifo_wdata = {rx_payload_word, erpm_period_int};
+assign rx_fifo_wdata = {active_tx_tag_reg, rx_payload_word, erpm_period_int};
 
 dshot_frame_pack u_dshot_frame_pack(
     .value12    (tx_value12),
@@ -152,6 +154,14 @@ always @(posedge clk) begin
         turnaround_count_reg <= 16'h0000;
     end else if (!turnaround_done) begin
         turnaround_count_reg <= turnaround_count_reg + 16'd1;
+    end
+end
+
+always @(posedge clk) begin
+    if (rst) begin
+        active_tx_tag_reg <= 4'h0;
+    end else if (start) begin
+        active_tx_tag_reg <= tx_tag;
     end
 end
 
