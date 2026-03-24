@@ -2,7 +2,7 @@
 
 ## Scope
 
-This directory contains a standalone AXI-Lite controlled DSHOT block with optional bidirectional receive support.
+This project contains a standalone AXI-Lite controlled DSHOT block with optional bidirectional receive support.
 
 Current design assumption:
 
@@ -11,27 +11,27 @@ Current design assumption:
 
 ## Main Files
 
-- `dshot_axil_top.v`: top-level wrapper with AXI-Lite, DSHOT pins, and `irq`
-- `dshot_axil_regs.v`: AXI-Lite register bank, RX FIFO handling, and IRQ generation
-- `dshot_core.v`: DSHOT TX/RX integration below the register layer
-- `dshot_seq_ctrl.v`: transaction sequencer with repeat handling
-- `dshot_tx_engine.v`: DSHOT waveform generator
-- `dshot_rx_frontend.v`: bidirectional reply capture frontend
-- `dshot_gcr_decode.v`: 21-bit symbol to 16-bit payload decode
-- `dshot_erpm_decode.v`: payload CRC, eRPM period, and EDT decode
-- `dshot_rx_fifo.v`: single-clock FIFO for received words
-- `dshot_module_breakdown.md`: architecture note
+- `rtl/dshot_axil_top.v`: top-level wrapper with AXI-Lite, DSHOT pins, and `irq`
+- `rtl/dshot_axil_regs.v`: AXI-Lite register bank, RX FIFO handling, and IRQ generation
+- `rtl/dshot_core.v`: DSHOT TX/RX integration below the register layer
+- `rtl/dshot_seq_ctrl.v`: transaction sequencer with repeat handling
+- `rtl/dshot_tx_engine.v`: DSHOT waveform generator
+- `rtl/dshot_rx_frontend.v`: bidirectional reply capture frontend
+- `rtl/dshot_gcr_decode.v`: 21-bit symbol to 16-bit payload decode
+- `rtl/dshot_erpm_decode.v`: payload CRC, eRPM period, and EDT decode
+- `rtl/dshot_rx_fifo.v`: single-clock FIFO for received words
+- `rtl/dshot_module_breakdown.md`: architecture note
 
 ## Testbench Files
 
-Testbench sources live in `../tb/`:
+Testbench sources live in `tb/`:
 
-- `dshot_axil_top_tb.v`: AXI-Lite testbench at `60 MHz`
-- `dshot_esc_model.v`: DSHOT receiver / ESC simulation model
+- `tb/dshot_axil_top_tb.v`: AXI-Lite testbench at `60 MHz`
+- `tb/dshot_esc_model.v`: DSHOT receiver / ESC simulation model
 
 ## Control/Register Model
 
-Key registers in `dshot_axil_regs.v`:
+Key registers are implemented in `rtl/dshot_axil_regs.v`:
 
 - `0x00` control
   - bit `0`: bidirectional DSHOT enable
