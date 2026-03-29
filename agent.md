@@ -147,12 +147,12 @@ These bits are self-clearing write pulses, not latched mode bits.
 
 The packaged IP is under:
 
-- `ip_core/`
+- `ip_repo/dshot_axil/`
 
 Relevant packaging files:
 
-- `ip_core/component.xml`
-- `ip_core/xgui/dshot_axil_v1_0.tcl`
+- `ip_repo/dshot_axil/component.xml`
+- `ip_repo/dshot_axil/xgui/dshot_axil_v1_0.tcl`
 - `package_ip_core.tcl`
 
 The packaged IP metadata now points vendor / advertisement URLs to:
@@ -167,7 +167,7 @@ The package also includes a Vivado-style `xilinx_productguide` view that points 
 - RX timing registers will likely need hardware tuning.
 - The RX FIFO stores the associated TX tag, payload, and derived eRPM period, but not richer per-entry metadata such as CRC failure history.
 - TX FIFO overflow and RX FIFO overflow are currently sticky-until-reset / FIFO-reset conditions, not separately clearable software bits.
-- `ip_core/hdl/` must be refreshed from `rtl/` when RTL changes; the package is not automatically synchronized.
+- `ip_repo/dshot_axil/src/` must be refreshed from `rtl/` when RTL changes; the package is not automatically synchronized.
 
 ## Safe Editing Guidance
 
@@ -178,4 +178,4 @@ The package also includes a Vivado-style `xilinx_productguide` view that points 
   - `software/dshot_host_regs.h`
   - `tb/dshot_axil_top_tb.v`
 - If FIFO entry format changes, update the AXI readout documentation and software expectations at the same time.
-- If packaged IP metadata changes, rerun `package_ip_core.tcl` and check `ip_core/component.xml`.
+- If packaged IP metadata changes, rerun `package_ip_core.tcl` and check `ip_repo/dshot_axil/component.xml`.

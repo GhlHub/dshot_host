@@ -7,7 +7,7 @@ AXI-Lite controlled DSHOT host IP with optional bidirectional eRPM receive suppo
 - `rtl/`: synthesizable RTL source
 - `tb/`: simulation testbench and DSHOT ESC model
 - `doc/`: protocol notes and theory-of-operation documents
-- `ip_core/`: Vivado-style packaged IP core containing RTL only
+- `ip_repo/dshot_axil/`: Vivado-style packaged IP core for automatic Vivado repository discovery
 
 ## Features
 
@@ -113,7 +113,7 @@ The current self-checking testbench covers:
 
 Packaged IP contents are under:
 
-- `ip_core/`
+- `ip_repo/dshot_axil/`
 
 The packaging helper script is:
 

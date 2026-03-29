@@ -1,4 +1,6 @@
-set ip_root [file normalize "/raid/work/dshot/ip_core"]
+set script_dir [file dirname [file normalize [info script]]]
+set rtl_dir [file join $script_dir rtl]
+set ip_root [file join $script_dir ip_repo dshot_axil]
 set component_xml [file join $ip_root component.xml]
 
 proc ensure_productguide_metadata {component_xml} {
@@ -60,8 +62,9 @@ proc ensure_productguide_metadata {component_xml} {
 }
 
 if {![file exists $component_xml]} {
+    file mkdir $ip_root
     create_project -in_memory dshot_ip_pack
-    add_files -norecurse [glob -nocomplain [file join $ip_root hdl *.v]]
+    add_files -norecurse [glob -nocomplain [file join $rtl_dir *.v]]
     set_property top dshot_axil_top [current_fileset]
     update_compile_order -fileset sources_1
 
@@ -81,7 +84,7 @@ if {![file exists $component_xml]} {
     set_property core_revision 1 $core
     set_property company_url {https://github.com/GhlHub/dshot_host} $core
     set_property advertisement_url {https://github.com/GhlHub/dshot_host} $core
-    set_property supported_families {artix7 Production kintex7 Production virtex7 Production zynq Production zynquplus Production} $core
+    set_property supported_families {artix7 Production kintex7 Production virtex7 Production zynq Production zynquplus Production spartanuplus Production} $core
 
     ipx::associate_bus_interfaces -busif s_axi -clock s_axi_aclk $core
 
@@ -110,7 +113,7 @@ set_property version 1.0 $core
 set_property core_revision 1 $core
 set_property company_url {https://github.com/GhlHub/dshot_host} $core
 set_property advertisement_url {https://github.com/GhlHub/dshot_host} $core
-set_property supported_families {artix7 Production kintex7 Production virtex7 Production zynq Production zynquplus Production} $core
+set_property supported_families {artix7 Production kintex7 Production virtex7 Production zynq Production zynquplus Production spartanuplus Production} $core
 
 set clk_if [ipx::get_bus_interfaces s_axi_aclk -of_objects $core]
 if {[llength $clk_if] > 0} {
