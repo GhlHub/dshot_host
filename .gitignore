@@ -7,6 +7,7 @@
 *.jou
 *.log
 *.str
+vivado_projects/dshot_master_tb/
 
 # OS metadata
 .DS_Store
